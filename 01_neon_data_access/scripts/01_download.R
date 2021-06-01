@@ -7,7 +7,7 @@ source("./01_neon_data_access/scripts/download_functions/DownloadNEON.R")
 
 ##Selected Sites for Challenge
 siteIDs <- "NEON.D01.HARV.DP1.00033" # Harvard phenocam data
-site <- "HARV"                 # Site names for download
+site <- "HARV"                       # Site names for download
 product <- "DP1.00002.001"           # Air temperature NEON product
 
 
