@@ -1,5 +1,7 @@
+
 library(tidyverse)
 library(duckdb)
+library(Amelia)
 
 source("./01_neon_data_access/scripts/download_functions/DownloadPhenocam.R")
 source("./01_neon_data_access/scripts/download_functions/QuantifyUncertainty.R")
