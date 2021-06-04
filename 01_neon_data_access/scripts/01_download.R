@@ -46,7 +46,7 @@ for(i in 1:length(siteIDs)){
   
 }
 
-full_time <- seq(min(allData$time),max(allData$time), by = "1 day")
+full_time <- seq(min(target$time),max(target$time), by = "1 day")
 full_time <- tibble(time = rep(full_time, 1))
 target <- left_join(full_time, target, by = c("time"))
 readr::write_csv(target, "./01_neon_data_access/data/phenology-targets.csv.gz")
