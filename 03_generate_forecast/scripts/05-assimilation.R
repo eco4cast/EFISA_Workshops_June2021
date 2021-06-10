@@ -1,7 +1,7 @@
 library(conflicted)
 library(here)
 
-wd <- here("03_generate_forecast/scripts")
+wd <- here("03_generate_forecast")
 
 library(dplyr)
 library(ggplot2)
@@ -11,12 +11,14 @@ conflict_prefer("select", "dplyr")
 conflict_prefer("filter", "dplyr")
 
 # Read old forecast
-forecast_dir <- file.path(wd, "..", "data")
+forecast_dir <- file.path(wd, "data")
 forecasts <- list.files(forecast_dir, "forecast-.*.csv", full.names = TRUE)
 old_forecast <- read_csv(tail(forecasts, 1))
 
 # Read phenology data
-pheno_dat <- read_csv("https://data.ecoforecast.org/targets/phenology/phenology-targets.csv.gz", guess_max = 1e6)
+datadir <- file.path(wd, "data")
+phenofile <- file.path(datadir, "phenology-targets.csv.gz")
+pheno_dat <- read_csv(phenofile, guess_max = 1e6)
 
 today <- "2021-04-02"
 state_today <- pheno_dat %>%
@@ -42,4 +44,6 @@ ggplot() +
   aes(x = time, y = gcc_pred, group = ensemble) +
   geom_line(aes(color = "old"), data = old_forecast, alpha = 0.4) +
   geom_line(aes(color = "new"), data = new_forecast, alpha = 0.4) +
-  scale_color_manual(values = c("old" = "gray70", "new" = "red4"))
+  scale_color_manual(values = c("old" = "gray30", "new" = "red3")) +
+  labs(x = "Time", y = "Predicted GCC") +
+  theme_bw()
