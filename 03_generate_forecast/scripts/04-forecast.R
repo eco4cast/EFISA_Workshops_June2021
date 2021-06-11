@@ -75,10 +75,9 @@ state_today <- pheno_dat_all %>%
 stopifnot(nrow(state_today) == 1)
 state_today
 
-# Ensemble of input values
+# Generate ensemble of input values and assign to the prediction matrix.
 gcc_obs <- with(state_today, rnorm(nens, gcc_90, gcc_sd))
 hist(gcc_obs, xlab = "Observed GCC")
-
 gcc_pred <- matrix(NA_real_, ntime, nens)
 gcc_pred[1,] <- gcc_obs
 
@@ -87,7 +86,7 @@ p <- matrix(NA_real_, ntime, nens)
 p[1,] <- (gcc_pred[1,] - gccmin) / (gccmax - gccmin)
 hist(p[1,], xlab = "Initial phenology state")
 
-# Run the model for the next few time steps
+# Perform an ensemble simulation for the next few time steps
 for (t in seq(2, ntime)) {
   for (i in seq_len(nens)) {
     p[t,i] <- logistic_growth(p[t-1,i], r[t-1,i], 1)
@@ -95,6 +94,7 @@ for (t in seq(2, ntime)) {
   }
 }
 
+# Plot the results
 matplot(p, type = "l", lty = "solid", col = "gray",
         xlab = "Forecast day", ylab = "Phenology state")
 matplot(gcc_pred, type = "l", lty = "solid", col = "gray",
