@@ -14,10 +14,11 @@ library(readr)
 conflict_prefer("select", "dplyr")
 conflict_prefer("filter", "dplyr")
 
-# Read old forecast
 sitename <- "HARV"
 today <- as_date("2021-05-16")
 yesterday <- today - days(1)
+
+# Read old forecast
 forecast_file <- file.path(wd, "data", glue("forecast-{yesterday}.csv"))
 old_forecast <- read_csv(forecast_file)
 
@@ -25,6 +26,7 @@ old_forecast <- read_csv(forecast_file)
 phenofile <- file.path(wd, "data", "phenology-targets.csv.gz")
 pheno_dat <- read_csv(phenofile, guess_max = 1e6)
 
+# Select new data for "today"
 state_today <- pheno_dat %>%
   filter(time == today, siteID == sitename)
 
@@ -40,6 +42,7 @@ arrange(ens_probs, desc(pval))
 ensembles_resamp <- with(ens_probs, sample(ensemble, prob = pval, replace = TRUE)) %>%
   as_tibble()
 count(ensembles_resamp, value, sort = TRUE)
+
 new_forecast <- old_forecast %>%
   inner_join(ensembles_resamp, c("ensemble" = "value"))
 
