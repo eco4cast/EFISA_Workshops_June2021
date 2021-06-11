@@ -1,5 +1,7 @@
-library(conflicted)
-library(here)
+set.seed(8675309)
+
+library(conflicted)   # Manage package conflicts
+library(here)         # Manage working directories
 
 wd <- here("03_generate_forecast")
 
@@ -14,27 +16,40 @@ conflict_prefer("filter", "dplyr")
 
 source(file.path(wd, "scripts/functions/logistic-growth.R"))
 
+# Read phenology data
 phenofile <- file.path(wd, "data", "phenology-targets.csv.gz")
 if (!file.exists(phenofile)) {
   download.file("https://data.ecoforecast.org/targets/phenology/phenology-targets.csv.gz", phenofile)
 }
-pheno_dat <- read_csv(phenofile, guess_max = 1e6)
+pheno_dat_all <- read_csv(phenofile, guess_max = 1e6)
 
-# Pretend it's April 1
-today <- "2021-04-01"
+# Read driver data
+gdd_data_all <- read_csv(here("01_neon_data_access", "data", "qaqc-phenology-driver.csv.gz")) %>%
+  # Recalculate GDD (should be cumulative by year!)
+  arrange(time) %>%
+  rename(GDD_orig = GDD) %>%
+  filter(year(time) > 2014) %>%
+  group_by(year = year(time)) %>%
+  mutate(GDD = cumsum(GDD_orig)) %>%
+  ungroup()
 
-# Read in temperature data, and use it to calculate growing degree days
-# TODO: Replace with real temperature data
+# Pretend it's May 1
+today <- as_date("2021-05-15")
+sitename <- "HARV"
+
+# Number of time steps -- today (1) + 14 days into the future
 ntime <- 15
-temperatures <- read_csv(file.path(wd, "data", "simulated-airtemp.csv")) %>%
-  # Calculate growing degree days
-  mutate(gdd = cumsum(pmax(airtemp_c - 10, 0))) %>%
-  filter(time >= today)
-gdd <- temperatures$gdd
-times <- temperatures$time
+
+# Recalculate GDD
+gdd_data <- gdd_data_all %>%
+  filter(time >= today) %>%
+  arrange(time) %>%
+  slice(seq(1, ntime))
+gdd <- gdd_data[["GDD"]]
+times <- gdd_data[["time"]]
 
 # Plot growing degree days
-ggplot(temperatures) +
+ggplot(gdd_data) +
   aes(x = time, y = gdd) +
   geom_line() +
   geom_point() +
@@ -47,16 +62,16 @@ rslope <- 1 / rnorm(nens, 2000, 500)
 rint <- rnorm(nens, 1e-1, 5e-2)
 r <- matrix(NA_real_, ntime, nens)
 for (i in seq_len(nens)) {
-  r[,i] <- rint[i] + rslope[i] * gdd
+  r[,i] <- pmax(rint[i] + rslope[i] * gdd, 0)
 }
 
 # Set our constants
-gccmin <- 0.35
-gccmax <- 0.44
+gccmin <- 0.33
+gccmax <- 0.45
 
-# Get the current phenology state -- for "today" (April 1)
-state_today <- pheno_dat %>%
-  filter(time == today, siteID == "DELA")
+# Get the current phenology state -- for "today" and selected site
+state_today <- pheno_dat_all %>%
+  filter(time == today, siteID == sitename)
 stopifnot(nrow(state_today) == 1)
 state_today
 
@@ -80,8 +95,10 @@ for (t in seq(2, ntime)) {
   }
 }
 
-matplot(p, type = "l", xlab = "Forecast day", ylab = "Phenology state")
-matplot(gcc_pred, type = "l", xlab = "Forecast day", ylab = "Predicted GCC")
+matplot(p, type = "l", lty = "solid", col = "gray",
+        xlab = "Forecast day", ylab = "Phenology state")
+matplot(gcc_pred, type = "l", lty = "solid", col = "gray",
+        xlab = "Forecast day", ylab = "Predicted GCC")
 
 # Tidy the forecast and save in a CSV
 gcc_tidy <- as_tibble(gcc_pred, .name_repair = "unique") %>%
