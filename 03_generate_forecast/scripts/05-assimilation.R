@@ -5,6 +5,7 @@ library(here)
 
 wd <- here("03_generate_forecast")
 
+library(distributions3)
 library(dplyr)
 library(ggplot2)
 library(glue)
@@ -29,11 +30,12 @@ pheno_dat <- read_csv(phenofile, guess_max = 1e6)
 # Select new data for "today"
 state_today <- pheno_dat %>%
   filter(time == today, siteID == sitename)
+gcc_obs <- with(state_today, Normal(gcc_90, gcc_sd))
 
 # Particle filter: Assign each ensemble member probabilities according to today's results
 ens_probs <- old_forecast %>%
   filter(time == yesterday) %>%
-  mutate(pval = with(state_today, dnorm(gcc_pred, gcc_90, gcc_sd))) %>%
+  mutate(pval = pmf(gcc_obs, gcc_pred)) %>%
   select(ensemble, pval)
 
 arrange(ens_probs, desc(pval))

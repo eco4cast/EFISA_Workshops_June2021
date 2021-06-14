@@ -5,6 +5,7 @@ library(here)         # Manage working directories
 
 wd <- here("03_generate_forecast")
 
+library(distributions3)
 library(dplyr)
 library(ggplot2)
 library(lubridate)
@@ -40,43 +41,42 @@ sitename <- "HARV"
 # Number of time steps -- today (1) + 14 days into the future
 ntime <- 15
 
-# Recalculate GDD
+# Subset GDD data to forecast time steps
 gdd_data <- gdd_data_all %>%
-  filter(time >= today) %>%
-  arrange(time) %>%
-  slice(seq(1, ntime))
-gdd <- gdd_data[["GDD"]]
-times <- gdd_data[["time"]]
+  filter(time >= today, time < today + days(ntime))
 
 # Plot growing degree days
 ggplot(gdd_data) +
-  aes(x = time, y = gdd) +
+  aes(x = time, y = GDD) +
   geom_line() +
   geom_point() +
   theme_bw() +
   labs(x = "Time", y = "Growing degree days")
 
-# Variability in parameters
-nens <- 500
-rslope <- 1 / rnorm(nens, 2000, 500)
-rint <- rnorm(nens, 1e-1, 5e-2)
-r <- matrix(NA_real_, ntime, nens)
-for (i in seq_len(nens)) {
-  r[,i] <- pmax(rint[i] + rslope[i] * gdd, 0)
-}
-
-# Set our constants
+# Set parameter distributions and constants
 gccmin <- 0.33
 gccmax <- 0.45
+rslope_inv_d <- Normal(2000, 500)
+rint_d <- Normal(0.1, 0.05)
+
+# Variability in parameters
+nens <- 1000
+rslope <- 1 / random(rslope_inv_d, nens)
+rint <- random(rint_d, nens)
+r <- matrix(NA_real_, ntime, nens)
+for (i in seq_len(nens)) {
+  r[,i] <- pmax(rint[i] + rslope[i] * gdd_data$GDD, 0)
+}
 
 # Get the current phenology state -- for "today" and selected site
 state_today <- pheno_dat_all %>%
   filter(time == today, siteID == sitename)
 stopifnot(nrow(state_today) == 1)
 state_today
+gcc_today <- with(state_today, Normal(gcc_90, gcc_sd))
 
 # Generate ensemble of input values and assign to the prediction matrix.
-gcc_obs <- with(state_today, rnorm(nens, gcc_90, gcc_sd))
+gcc_obs <- random(gcc_today, nens)
 hist(gcc_obs, xlab = "Observed GCC")
 gcc_pred <- matrix(NA_real_, ntime, nens)
 gcc_pred[1,] <- gcc_obs
@@ -102,7 +102,7 @@ matplot(gcc_pred, type = "l", lty = "solid", col = "gray",
 
 # Tidy the forecast and save in a CSV
 gcc_tidy <- as_tibble(gcc_pred, .name_repair = "unique") %>%
-  bind_cols(time = times) %>%
+  bind_cols(gdd_data) %>%
   pivot_longer(
     starts_with(".."),
     names_to = "ensemble",

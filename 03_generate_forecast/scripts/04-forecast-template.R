@@ -3,6 +3,7 @@ set.seed(8675309)
 library(conflicted)   # Manage package conflicts
 library(here)         # Manage working directories
 
+library(distributions3)
 library(dplyr)
 library(ggplot2)
 library(lubridate)
@@ -40,9 +41,13 @@ ntime <- 15
 
 # Plot growing degree days as a test
 
-# Variability in parameters
+# Set parameter distributions and constants
+gccmin <- 0.33
+gccmax <- 0.45
+rslope_inv_d <- Normal(2000, 500)
+rint_d <- Normal(0.1, 0.05)
 
-# Set our constants
+# Variability in parameters
 
 # Get the current phenology state -- for "today" and selected site
 
