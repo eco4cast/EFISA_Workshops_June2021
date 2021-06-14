@@ -1,0 +1,203 @@
+---
+title: "Meteorological Covariate Data Access Tutorial"
+author: "Kathryn Wheeler (kiwheel@bu.edu)"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE,message=FALSE)
+```
+
+As part of the 2021 EFISA meeting tutorials, this document provides some examples of accessing and using covariate data (specifically air temperature). 
+
+See: https://projects.ecoforecast.org/neon4cast-docs/meteorology-inputs.html
+
+#Load Required Libraries
+```{r}
+library('devtools')
+library('ncdf4')
+library("reticulate")
+# remotes::install_github("eco4cast/neon4cast")
+# library('neon4cast')
+```
+
+#Example NEON Site Data
+```{r}
+siteID <- "HARV"
+lat <- 42.5369
+long <- -72.1727
+```
+
+# NOAA Global Ensemble Forecasting System (GEFS)
+##Background 
+* 1 or 6 hour time resolution
+* Each forecast has 31 ensemble members, which are each in a separate netcdf file
+* For forecasts generated 4 times daily, the directories are organized by cycles 00, 06, 12, and 18
+    + Forecasts extend 35 days in the future for midnight (00 UTC) forecast for ensemble members 01-30
+        - Takes longer to download
+    + Extend 16 days for midnight forecast ensemble member 00 and other cycles
+
+* Following met variables are included:
+    + Air temperature
+    + Air pressure
+    + Wind speed
+    + Precipitation
+    + Downwelling longwave radiation
+    + Downwelling shortwave radiation
+    + Relative humidity
+  
+##Ways to access via EFI
+1. Click on file in browser (https://data.ecoforecast.org/minio/drivers/noaa/NOAAGEFS_1hr/)
+2. Directly download individual files from the command line using the file address
+3. Download files using aws.s3 commands
+4. Use EFI's R function code in neon4cast package called noaa.R, which downloads all ensemble members for a NEON site and forecast cycle
+
+##Download From EFI server
+```{r}
+source_url('https://github.com/eco4cast/neon4cast/blob/main/R/noaa.R?raw=TRUE')
+
+dte <- as.Date("2021-02-01")
+time_interval <- "1hr"
+cycle <- "00"
+download_noaa(siteID=siteID,interval=time_interval,date=dte,cycle=cycle,dir='../data')
+
+```
+
+## Read Data File 
+```{r}
+##Also see: https://github.com/eco4cast/neon4cast/blob/main/R/read_forecast.R
+allTemperature <- matrix(nrow=30,ncol=841,NA) #Each row is one 35-day ensemble member for different time values on the columns
+for(i in 1:30){
+  if(i<10){
+    i <- paste("0",as.character(i),sep="")
+  }
+  if(as.numeric(i)>0){
+    fileName <- paste("../data/noaa/noaa/NOAAGEFS_",time_interval,"/",siteID,"/",dte,"/",cycle,
+                      "/NOAAGEFS_",time_interval,"_",siteID,"_",dte,"T",cycle,"_",dte+35
+                      ,"T",cycle,"_ens",i,".nc",sep="")
+  }else{
+    fileName <- paste("../data/noaa/noaa/NOAAGEFS_",time_interval,"/",siteID,"/",dte,"/",cycle,
+                      "/NOAAGEFS_",time_interval,"_",siteID,"_",dte,"T",cycle,"_",dte+16
+                      ,"T",cycle,"_ens",i,".nc",sep="")
+  }
+  nc <- nc_open(fileName)
+  time <- as.integer(ncdf4::ncvar_get(nc, "time"))
+  tustr <- lubridate::as_datetime(strsplit(ncdf4::ncatt_get(nc, varid = "time", "units")$value
+                                           , " ")[[1]][3])
+  time <- as.POSIXct.numeric((time*60*60), origin = tustr,tz = "UTC")
+  temperature <- ncvar_get(nc,"air_temperature")-273 #Convert from Kelvin to Celcius
+  allTemperature[as.numeric(i),] <- temperature
+}
+
+```
+
+##Plot NOAA GEFS Forecasted Temperature
+```{r}
+  plot(time,allTemperature[1,],ylab="Temperature (Degrees C)",xlab="Date",main="NOAA GEFS Temperature Forecast for HARV",typ="l",col=1,ylim=c(-30,20))
+  for(i in 2:nrow(allTemperature)){
+    lines(time,allTemperature[i,],typ="l",col=as.numeric(i))
+  }
+  temp.ci <- apply(X=allTemperature,MARGIN = 2,FUN=quantile,c(0.025,0.5,0.975))
+  #Plot by quantiles 
+  plot(time,temp.ci[2,],ylab="Temperature (Degrees C)",xlab="Date",main="NOAA GEFS Temperature Forecast for HARV",typ="l",ylim=c(-20,15))
+    polygon(cbind(c(time, rev(time), time[1]), c(temp.ci[1,], rev(temp.ci[3,]), temp.ci[1,][1])), 
+    border = NA, col="lightblue")
+    lines(time,temp.ci[2,])
+```
+
+#ERA5 Reanalysis Product
+##Background
+* 5th generation ECMWF reanalysis for global climate and weather
+* Data available from 1950-1978 (preliminary back extension) and from 1979 onwards
+* Hourly estimates for a large number of atmospheric, ocean-wave, and land-surface quantities
+* 10-member ensemble at 3 hour intervals for uncertainty
+* Available daily with a latency of ~ 5 days
+* 0.25 degree x 0.25 degree spatial resolution (0.5 degree for uncertainty estimate)
+
+* Example Variables
+    + Evaporation
+    + Lake bottom temperature
+    + Lake depth
+    + Lake ice depth
+    + Total precipitation
+    + LAI
+    + 2m temperature
+    + Air pressure
+    + 2m dewpoint
+    + Wind
+    + Surface downwelling shortwave/longwave flux
+
+##Download 
+```{r}
+start_date <- as.Date("2021-01-01")
+end_date <- as.Date("2021-01-31")
+
+#Follow instructions on https://cds.climate.copernicus.eu/api-how-to to obtain a Climate Data Store Application Program Interface (cdsapi) key 
+fileName <- paste('../data/',siteID,"_",start_date,"_",end_date,"_era5AirTemperatureMembers.nc", sep ="")
+
+if(!file.exists(fileName)){
+  cdsapi <- reticulate::import("cdsapi")
+  cclient <- cdsapi$Client()
+
+  variables <- tibble::tribble(
+    ~cf_name, ~units, ~api_name, ~ncdf_name,
+    "air_temperature", "Kelvin", "2m_temperature", "t2m",
+    "air_pressure", "Pa", "surface_pressure", NA_character_,
+    NA_character_, "Kelvin", "2m_dewpoint_temperature", NA_character_,
+    "precipitation_flux", "kg/m2/s", "total_precipitation", NA_character_,
+    "eastward_wind", "m/s", "10m_u_component_of_wind", NA_character_,
+    "northward_wind", "m/s", "10m_v_component_of_wind", NA_character_,
+    "surface_downwelling_shortwave_flux_in_air", "W/m2", "surface_solar_radiation_downwards", NA_character_,
+    "surface_downwelling_longwave_flux_in_air", "W/m2", "surface_thermal_radiation_downwards", NA_character_
+  ) #Some examples (see more at: https://cds.climate.copernicus.eu/cdsapp#!/dataset/reanalysis-era5-single-levels?tab=overview)
+
+  var <- variables[["api_name"]][[1]] #Only include the first variable
+
+  area <- rep(round(c(lat, long) * 4) / 4, 2)
+
+  do_next <- tryCatch({
+    cclient$retrieve(
+      "reanalysis-era5-single-levels",
+      list(
+        variable = var,
+        product_type = 'ensemble_members',
+        date = paste(start_date, end_date, sep = "/"),
+        time = "00/to/23/by/1",
+        area = area,
+        grid = c(0.25, 0.25),
+        format = "netcdf"
+      ),
+      fileName
+    )
+    FALSE
+  }, error = function(e) {
+    print("Failed to download")
+    TRUE
+  })
+}
+```
+
+##Read Data File
+```{r}
+
+nc <- nc_open(fileName) #10 ensemble members in file
+temperature <- ncvar_get(nc)-273
+time <- as.integer(ncdf4::ncvar_get(nc, "time"))
+time <- as.POSIXct(time*3600, origin = "1900-01-01",tz = "GMT")
+```
+
+##Plot
+```{r}
+plot(time,temperature[1,],typ="l",ylab="Temperature (Degrees C)",xlab="Date",main="ERA5 Temperature for HARV")
+
+  for(i in 2:nrow(temperature)){
+    lines(time,temperature[i,],typ="l",col=as.numeric(i))
+  }
+  temp.ci <- apply(X=temperature,MARGIN = 2,FUN=quantile,c(0.025,0.5,0.975))
+  #Plot by quantiles
+  plot(time,temp.ci[2,],ylab="Temperature (Degrees C)",xlab="Date",main="ERA Temperature for HARV",typ="l")
+    polygon(cbind(c(time, rev(time), time[1]), c(temp.ci[1,], rev(temp.ci[3,]), temp.ci[1,][1])),
+    border = NA, col="lightblue")
+    lines(time,temp.ci[2,])
+```
+
