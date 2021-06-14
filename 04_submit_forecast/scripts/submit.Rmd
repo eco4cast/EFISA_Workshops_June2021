@@ -58,7 +58,6 @@ In this tutorial, you will learn how to:
 * `csv` or `netCDF` file
 * Teams may submit an incomplete forecast. 
 * Forecasts must be submitted in a particular format in order to pass a set of internal check that allow the forecast to be visualized on the NEON Ecological Forecast Challenge dashboard and evaluated with the scoring process.
-* Each theme has its own specified columns
 * We have Alexey's forecast in csv format
 ```{r message=FALSE, warning=FALSE}
 library(neon4cast)
@@ -69,6 +68,7 @@ fc_raw <- readr::read_csv(file.path(wd,"data","forecast-2021-05-15.csv"))
 
 
 # 2. Create forecast 
+* Each theme has its own specified columns
 * Let's check that the variable names match what is expected for the phenology challenge: 
     * `time`, `siteID`, `ensemble` or `statistic`, `forecast`, `data_assimilation`, `gcc_90`: 
 ```{r}
@@ -146,16 +146,19 @@ scores %>%
 
 # 3. Create metadata
 * The `neon4cast` package has two helper functions to generate metdata in the correct format:
-    * `create_model_metadata()` Creates a `yml` file that has the same name as your forecast file. Modify the fields in this file and save it
-    * `write_model_metadata()` Writes an xml file from the forecast and yml files
+    * Step 1: `create_model_metadata()` Creates a yaml file that has the same name as your forecast file. Manually enter your forecast details 
+    * Step 2: `write_model_metadata()` Converts the yaml to an eml (xml) file for submission
 
 
 # 3. Create metadata      
 ```{r message=FALSE, warning=FALSE}
 # Generate yaml
 create_model_metadata(forecast_file)
+```
+    
 
-
+# 3. Create metadata      
+```{r message=FALSE, warning=FALSE}
 metadata_yaml <- glue::glue(file.path(wd, "data", "{theme}-{team}.yml"),
                             theme = "phenology",
                             team = "wigglaspen")
@@ -187,6 +190,14 @@ metadata_xml <- glue::glue(file.path(wd, "data", "{theme}-{date}-{team}.xml"),
 </div> 
 
 <img src="../figures/rshinyapp.png" alt="drawing" width="80%" />
+
+
+# Resources
+* [NEON EFI Challenge Overview](https://projects.ecoforecast.org/neon4cast-docs/) for rules and description
+* The [eco4cast::neon4cast package](https://github.com/eco4cast/neon4cast) provides helper functions for many steps throughout the forecasting process. This is still under development, so we welcome feedback from the community.
+* [Ecological Forecasting Output and Metadata Standards](https://docs.google.com/document/d/1Xxyt-1LFHCE-CBwF_qad2sWHMHJoZVJdrOyK4ydjeR0/edit)
+* [The Challenge dashboard Rshiny app](https://shiny.ecoforecast.org/)  visualizes submissions
+
 
 
 # Questions? 
